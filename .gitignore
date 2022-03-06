@@ -33,3 +33,10 @@ nosetests.xml
 .mr.developer.cfg
 .project
 .pydevproject
+
+# Folders
+*.idea/
+
+# Files
+*.xml
+*.iml
