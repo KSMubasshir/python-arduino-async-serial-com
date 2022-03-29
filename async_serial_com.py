@@ -14,13 +14,12 @@ from tornado.options import define, options
 import json
 from queue import Queue
 
-define("port", default=8080, help="run on the given port", type=int)
+define("port", default=8081, help="run on the given port", type=int)
 
 clients = []
 
 input_queue = Queue()
 output_queue = Queue()
-
 
 
 class IndexHandler(tornado.web.RequestHandler):
@@ -84,6 +83,12 @@ class HWInterface(object):
         self.worker.start()
         self.callback = None
         self.verbose = True  # for debugging
+        self.resp = ""
+
+    def get_response(self):
+        resp = self.resp
+        self.resp = ""
+        return resp
 
     def register_callback(self, proc):
         """Call this function when the hardware sends us serial data"""
@@ -108,7 +113,8 @@ class HWInterface(object):
                 if len(response) > 0:  # if an actual character
                     if self.verbose:
                         self.response = response
-                        print("poll response: " + self.response.decode("utf-8"))
+                        # print("poll response: " + self.response.decode("utf-8"))
+                        self.resp = self.resp + self.response.decode("utf-8")
                         sys.stdout.flush()
                     if self.callback:
                         # a valid response so convert to string and call back
@@ -116,7 +122,7 @@ class HWInterface(object):
                 return "OK"
         return "None"  # got no response
 
-portname = "/dev/ttyACM0"
+portname = "COM10"
 portbaud = "9600"
 ser = serial.Serial(portname, portbaud, timeout=0, write_timeout=0)
 hw = HWInterface(ser, 0.1)
@@ -125,7 +131,7 @@ hw = HWInterface(ser, 0.1)
 def my_callback(response):
     """example callback function to use with HW_interface class.
      Called when the target sends a byte, just print it out"""
-    print('got HW response "%s"' % response)
+    # print('got HW response "%s"' % response)
 
 
 class WebSocketHandler(tornado.websocket.WebSocketHandler):
@@ -151,14 +157,20 @@ def check_queue():
     if not input_queue.empty():
         cmd = input_queue.get().split(' ')
         if cmd[0] == 'r':
-            print('Last response: "%s"' % hw.response)
-            output_queue.put(hw.response)
+            # print('Last response: "%s"' % hw.response)
+            # output_queue.put(hw.response)
+            # print('Last response: "%s"' % resp)
+            output_queue.put(hw.get_response())
+            
 
         elif cmd[0] == 's':
-            val = bytes(cmd[1][0], 'utf-8')
+            val = bytes(cmd[1], 'utf-8')
             print("sending command " + val.decode('utf-8'))
             sys.stdout.flush()
             hw.write_HW(val)
+            time.sleep(2)
+            input_queue.put("r")
+            # input_queue.put("r")
 
         elif cmd[0] == 'x':
             print("exiting...")
@@ -221,6 +233,7 @@ if __name__ == '__main__':
     scheduler = tornado.ioloop.PeriodicCallback(check_queue, scheduler_interval)
     scheduler.start()
     mainLoop.start()
+
 
 
 
